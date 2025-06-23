@@ -202,15 +202,14 @@ def generate_image_for_article(post_data, article_content):
     3. If that fails, use Gemini to generate the prompt
     4. Generate image using Together API
     5. If that fails, use Gemini for image generation
-    6. Convert image to base64 for direct embedding in blog content
-    7. Delete local image file after conversion
-    
+    6. Keep local image file for WordPress upload
+
     Args:
         post_data (dict): The post data from Google Sheets
         article_content (str): The generated article content
-        
+
     Returns:
-        dict: Image generation result with image data, prompt, alt tag, and base64 encoded image
+        dict: Image generation result with local file path, prompt, and alt tag
     """
     try:
         print("Starting image generation process...")
@@ -422,54 +421,14 @@ def generate_image_for_article(post_data, article_content):
             raise Exception("Together API failed and Gemini image generation is not implemented")
         
         # Step 7: Convert the upscaled image to base64 for direct embedding in blog content
-        print("Uploading image to Google Drive and creating direct link...")
-        import re
-        
-        try:
-            # Uncomment and use the Google Drive upload code
-            from google_drive_utils import GoogleDriveClient
-            
-            drive_client = GoogleDriveClient()
-            
-            # Upload the upscaled image to Google Drive
-            file_metadata = drive_client.upload_image(
-                image_path=upscaled_image_path,
-                folder_id=api_keys.GOOGLE_DRIVE_FOLDER_ID
-            )
-            
-            # Get the file ID from the metadata
-            file_id = file_metadata.get('id')
-            
-            if not file_id:
-                raise Exception("Failed to get file ID from Google Drive upload")
-                
-            # Create the direct link using the lh3.googleusercontent.com format
-            direct_link = f"https://lh3.googleusercontent.com/d/{file_id}"
-            print(f"Created direct link: {direct_link}")
-            
-            # Create the HTML image tag with the direct link
-            image_tag = f"<img src='{direct_link}' alt='{alt_tag}'>"
-            
-            # Step 8: Delete both the original and upscaled image files after successful upload
-            if os.path.exists(image_path):
-                os.remove(image_path)
-                print(f"Deleted original image file: {image_path}")
-                
-            if os.path.exists(upscaled_image_path) and upscaled_image_path != image_path:
-                os.remove(upscaled_image_path)
-                print(f"Deleted upscaled image file: {upscaled_image_path}")
-            
-            return {
-                "success": True,
-                "image_prompt": image_prompt,
-                "alt_tag": alt_tag,
-                "image_path": direct_link,
-                "image_tag": image_tag
-            }
-        except Exception as e:
-            print(f"Error in uploading image to Google Drive: {e}")
-            raise
-                
+        # Step 7: Keep the local image file for WordPress upload
+        return {
+            'success': True,
+            'image_path': image_path,
+            'prompt': image_prompt,
+            'alt_tag': alt_tag,
+            'filename': os.path.basename(image_path)
+        }
     except Exception as e:
         print(f"Error in image generation process: {e}")
         import traceback
@@ -689,68 +648,85 @@ def format_blog_content(post_data, article_content, image_result):
         traceback.print_exc()
         return {"error": str(e)}
 
-def post_to_blogger(blog_content):
+def post_to_wordpress(blog_content, image_result, wordpress_site_url):
+    """
+    Post content to WordPress as a draft after uploading the image.
+
+    Args:
+        blog_content (dict): The formatted blog content
+        image_result (dict): The image generation result with local file path
+        wordpress_site_url (str): The WordPress site URL
+
+    Returns:
+        dict: Result of the WordPress posting operation
+    """
     try:
-        print("Posting to Blogger...")
-        with open('token.json', 'r') as token_file:
-            creds_data = json.load(token_file)
-        scopes = ['https://www.googleapis.com/auth/blogger']
+        print("Posting to WordPress...")
+        from wordpress_api import WordPressClient
 
-        # Create the credentials object
-        creds = Credentials.from_authorized_user_info(info=creds_data, scopes=scopes)
+        # Initialize WordPress client
+        wp_client = WordPressClient(wordpress_site_url)
 
-        # If expired and has refresh_token, refresh and save updated token
-        if creds.expired and creds.refresh_token:
-            print("Refreshing token...")
-            creds.refresh(Request())
-            with open('token.json', 'w') as token_file:
-                token_file.write(creds.to_json())
-        blogger_service = build('blogger', 'v3', credentials=creds)
-        
-        # Create a custom URL slug from the title
-        import re
-        # Convert title to lowercase, replace spaces with hyphens, remove special characters
-        url_slug = re.sub(r'[^\w\s-]', '', blog_content.get('title', '')).strip().lower().replace(' ', '-')
-        # Remove any consecutive hyphens
-        url_slug = re.sub(r'-+', '-', url_slug)
-        
-        # Process content: Remove title if it exists at the beginning
+        # Upload image to WordPress if available
+        featured_media_id = None
+        image_url = None
+
+        if image_result.get('success') and image_result.get('image_path'):
+            print("Uploading image to WordPress...")
+            image_upload_result = wp_client.upload_image(
+                image_result['image_path'],
+                title=f"Image for {blog_content.get('title', '')}",
+                alt_text=image_result.get('alt_tag', '')
+            )
+
+            if image_upload_result['success']:
+                featured_media_id = image_upload_result['media_id']
+                image_url = image_upload_result['url']
+                print(f"Successfully uploaded image: {image_url}")
+
+                # Clean up local image file after upload
+                try:
+                    os.remove(image_result['image_path'])
+                    print(f"Deleted local image file: {image_result['image_path']}")
+                except Exception as delete_error:
+                    print(f"Warning: Could not delete local image file: {delete_error}")
+            else:
+                print(f"Failed to upload image: {image_upload_result.get('error')}")
+
+        # Prepare content with image if available
         content = blog_content.get('content', '')
-        # Remove h1 title tag if present at the beginning
-        content = re.sub(r'^\s*<h1>.*?</h1>', '', content)
-        # Ensure content starts with image tag if not already
-        if not content.strip().startswith('<img'):
-            # Find the first image tag
-            img_match = re.search(r'<img[^>]*>', content)
-            if img_match:
-                # Extract the image tag
-                img_tag = img_match.group(0)
-                # Remove the image tag from its current position
-                content = content.replace(img_tag, '', 1)
-                # Add the image tag at the beginning
-                content = img_tag + content
-        
-        # In the post_to_blogger function, modify the post_body
-        post_body = {
-            'kind': 'blogger#post', 
-            'title': blog_content.get('title'),
-            'content': content, 
-            'labels': blog_content.get('categories', []),
-            # Add custom URL path with custom permalink structure
-            'url': url_slug,
-            # Add search description and custom permalink template
-            'customMetaData': json.dumps({
-                'description': blog_content.get('description', ''),
-                'permalink-template': '/{slug}'
-            })
-        }
-        request = blogger_service.posts().insert(blogId=api_keys.BLOG_ID, isDraft=False, body=post_body)
-        response = request.execute()
-        print(f"Successfully posted to Blogger: {response.get('url')}")
-        return {'success': True, 'url': response.get('url'), 'post_id': response.get('id')}
+        if image_url and image_result.get('alt_tag'):
+            # Add image at the beginning of content if not already present
+            if not content.strip().startswith('<img'):
+                image_tag = f'<img src="{image_url}" alt="{image_result.get("alt_tag", "")}" style="width: 100%; height: auto; margin-bottom: 20px;">'
+                content = image_tag + content
+
+        # Create WordPress post as draft
+        post_result = wp_client.create_post(
+            title=blog_content.get('title', ''),
+            content=content,
+            status='draft',  # Always create as draft
+            categories=blog_content.get('categories', []),
+            tags=blog_content.get('keywords', []),
+            featured_media=featured_media_id,
+            excerpt=blog_content.get('description', '')
+        )
+
+        if post_result['success']:
+            print(f"Successfully created WordPress draft: {post_result['edit_url']}")
+            return {
+                'success': True,
+                'url': post_result['url'],
+                'edit_url': post_result['edit_url'],
+                'post_id': post_result['post_id'],
+                'status': 'draft'
+            }
+        else:
+            print(f"Failed to create WordPress post: {post_result.get('error')}")
+            return {'success': False, 'error': post_result.get('error')}
 
     except Exception as e:
-        print(f"Error posting to Blogger: {e}")
+        print(f"Error posting to WordPress: {e}")
         import traceback
         traceback.print_exc()
         return {'success': False, 'error': str(e)}
@@ -796,42 +772,24 @@ if __name__ == "__main__":
                 
                 # In the main execution block, modify the image tag replacement code
                 # Replace the blank <img/> tag with the actual image tag
-                if 'content' in blog_content and image_result.get('image_tag'):
-                    # Check if there's a placeholder image tag
-                    if '<img/>' in blog_content['content']:
-                        blog_content['content'] = blog_content['content'].replace('<img/>', image_result.get('image_tag'))
-                    # Also check for any other image tags with local or relative paths
-                    else:
-                        # Replace any image tags that don't have absolute URLs
-                        import re
-                        pattern = r'<img\s+src=["\'](?!https?://)(.*?)["\']\s+alt=["\'](.*)["\'](\s*)/?>'
-                        replacement = image_result.get('image_tag')
-                        blog_content['content'] = re.sub(pattern, replacement, blog_content['content'])
-                    
-                    # Add this logging to see the final image tag
-                    print(f"Final image tag in content: {image_result.get('image_tag')}")
-                    # Extract the image tag from the content to verify it's correct
-                    img_match = re.search(r'<img[^>]*>', blog_content['content'])
-                    if img_match:
-                        print(f"Image tag in final content: {img_match.group(0)}")
-                    print("Successfully replaced placeholder with actual image tag")
+                if 'content' in blog_content:
+                    # No longer replacing image tags directly, WordPress handles this
+                    print("Image tag replacement not needed, WordPress handles image insertion.")
                 
-                # Post to Blogger
-                post_result = post_to_blogger(blog_content)
-                
+                # Post to WordPress as draft
+                post_result = post_to_wordpress(blog_content, image_result, api_keys.WORDPRESS_SITE_URL)
+
                 if post_result.get('success'):
-                    print(f"Successfully posted to Blogger: {post_result.get('url')}")
-                    # After successfully posting to Blogger
+                    print(f"Successfully created WordPress draft: {post_result.get('edit_url')}")
+                    print(f"WordPress post URL: {post_result.get('url')}")
+                    # After successfully posting to WordPress
                     if sheets_client.mark_post_as_done():
                         print("Successfully moved post to done_article sheet")
                     else:
                         print("Failed to move post to done_article sheet")
                 else:
-                    print(f"Failed to post to Blogger: {post_result.get('error')}")
+                    print(f"Failed to post to WordPress: {post_result.get('error')}")
             else:
                 print(f"Blog content formatting failed: {blog_content.get('error')}")
         else:
             print(f"Image generation failed: {image_result.get('error', 'Unknown error')}")
-            
-            
-
