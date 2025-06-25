@@ -29,23 +29,53 @@ def process_image(image_path, scale_factor="2x", save_result=True, output_dir="p
         
         # Record start time for timeout tracking
         start_time = time.time()
-        
-        # Start the prediction process
-        result = client.predict(
-            image=handle_file(image_path),
-            size=scale_factor,
-            api_name="/predict"
-        )
-        
-        # Check if processing time exceeded timeout
+
+        # Start the prediction process with timeout handling
+        import threading
+        import queue
+
+        result_queue = queue.Queue()
+        exception_queue = queue.Queue()
+
+        def prediction_worker():
+            try:
+                result = client.predict(
+                    image=handle_file(image_path),
+                    size=scale_factor,
+                    api_name="/predict"
+                )
+                result_queue.put(result)
+            except Exception as e:
+                exception_queue.put(e)
+
+        # Start the prediction in a separate thread
+        prediction_thread = threading.Thread(target=prediction_worker)
+        prediction_thread.daemon = True
+        prediction_thread.start()
+
+        # Wait for result with timeout
+        prediction_thread.join(timeout)
+
         processing_time = time.time() - start_time
-        if processing_time > timeout:
+
+        # Check if thread is still alive (timeout occurred)
+        if prediction_thread.is_alive():
             print(f"Processing exceeded timeout of {timeout} seconds ({processing_time:.2f}s). Using original image.")
             return {
                 "status": "timeout",
                 "local_path": image_path,
                 "processing_time": processing_time
             }
+
+        # Check if there was an exception
+        if not exception_queue.empty():
+            raise exception_queue.get()
+
+        # Get the result
+        if result_queue.empty():
+            raise Exception("Prediction completed but no result was returned")
+
+        result = result_queue.get()
         
         print(f"Processing complete in {processing_time:.2f} seconds!")
         

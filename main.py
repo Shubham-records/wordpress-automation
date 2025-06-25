@@ -422,12 +422,14 @@ def generate_image_for_article(post_data, article_content):
         
         # Step 7: Convert the upscaled image to base64 for direct embedding in blog content
         # Step 7: Keep the local image file for WordPress upload
+        # Use upscaled image if available, otherwise use original
+        final_image_path = upscaled_image_path if 'upscaled_image_path' in locals() else image_path
         return {
             'success': True,
-            'image_path': image_path,
+            'image_path': final_image_path,
             'prompt': image_prompt,
             'alt_tag': alt_tag,
-            'filename': os.path.basename(image_path)
+            'filename': os.path.basename(final_image_path)
         }
     except Exception as e:
         print(f"Error in image generation process: {e}")
