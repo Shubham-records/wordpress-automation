@@ -43,17 +43,6 @@ class WordPressClient:
         }
     
     def upload_image(self, image_path: str, title: str = None, alt_text: str = None) -> Dict[str, Any]:
-        """
-        Upload an image to WordPress media library.
-        
-        Args:
-            image_path: Path to the image file
-            title: Optional title for the image
-            alt_text: Optional alt text for the image
-            
-        Returns:
-            Dictionary containing upload result with media ID and URL
-        """
         if not os.path.exists(image_path):
             raise FileNotFoundError(f"Image file not found: {image_path}")
         
@@ -127,20 +116,26 @@ class WordPressClient:
             print(f"Error uploading image to WordPress: {e}")
             return {'success': False, 'error': str(e)}
     
-    def create_post(self, title: str, content: str, status: str = 'draft', 
-                   categories: list = None, tags: list = None, 
-                   featured_media: int = None, excerpt: str = None) -> Dict[str, Any]:
+    def create_post_enhanced(self, title: str, content: str, status: str = 'draft', 
+                           categories: list = None, tags: list = None, 
+                           featured_media: int = None, excerpt: str = None,
+                           slug: str = None, meta_description: str = None,
+                           focus_keyword: str = None, date: str = None) -> Dict[str, Any]:
         """
-        Create a new WordPress post.
+        Create a new WordPress post with enhanced SEO features.
         
         Args:
             title: Post title
             content: Post content (HTML)
-            status: Post status ('draft', 'publish', 'private', etc.)
+            status: Post status ('draft', 'publish', 'private', 'future')
             categories: List of category names or IDs
             tags: List of tag names
             featured_media: Media ID for featured image
             excerpt: Post excerpt
+            slug: Custom URL slug
+            meta_description: SEO meta description
+            focus_keyword: Primary SEO keyword
+            date: Scheduled publication date (ISO 8601 format)
             
         Returns:
             Dictionary containing post creation result
@@ -156,6 +151,12 @@ class WordPressClient:
         
         if featured_media:
             post_data['featured_media'] = featured_media
+            
+        if slug:
+            post_data['slug'] = slug
+            
+        if date and status == 'future':
+            post_data['date'] = date
         
         # Handle categories
         if categories:
@@ -187,6 +188,23 @@ class WordPressClient:
             if tag_ids:
                 post_data['tags'] = tag_ids
         
+        # Add SEO meta fields (if using SEO plugin like Yoast or RankMath)
+        meta_fields = {}
+        if meta_description:
+            # For Yoast SEO
+            meta_fields['_yoast_wpseo_metadesc'] = meta_description
+            # For RankMath
+            meta_fields['rank_math_description'] = meta_description
+            
+        if focus_keyword:
+            # For Yoast SEO
+            meta_fields['_yoast_wpseo_focuskw'] = focus_keyword
+            # For RankMath
+            meta_fields['rank_math_focus_keyword'] = focus_keyword
+        
+        if meta_fields:
+            post_data['meta'] = meta_fields
+
         try:
             response = requests.post(
                 f"{self.api_base}/posts",
@@ -196,7 +214,12 @@ class WordPressClient:
             response.raise_for_status()
             
             post_result = response.json()
+            
+            # Log the created post details
             print(f"Successfully created WordPress post: {post_result['link']}")
+            print(f"Post ID: {post_result['id']}")
+            print(f"Post slug: {post_result['slug']}")
+            print(f"Post status: {post_result['status']}")
             
             return {
                 'success': True,
@@ -204,13 +227,78 @@ class WordPressClient:
                 'url': post_result['link'],
                 'edit_url': f"{self.site_url}/wp-admin/post.php?post={post_result['id']}&action=edit",
                 'status': post_result['status'],
+                'slug': post_result['slug'],
+                'date': post_result.get('date', ''),
                 'data': post_result
             }
             
         except requests.exceptions.RequestException as e:
             print(f"Error creating WordPress post: {e}")
+            if hasattr(e, 'response') and e.response:
+                print(f"Response content: {e.response.text}")
             return {'success': False, 'error': str(e)}
     
+    def get_post_by_slug(self, slug: str) -> Dict[str, Any]:
+        """
+        Get a post by its slug.
+        
+        Args:
+            slug: The post slug
+            
+        Returns:
+            Dictionary containing post data or error
+        """
+        try:
+            response = requests.get(
+                f"{self.api_base}/posts",
+                headers=self.headers,
+                params={'slug': slug}
+            )
+            response.raise_for_status()
+            
+            posts = response.json()
+            if posts:
+                return {'success': True, 'post': posts[0]}
+            else:
+                return {'success': False, 'error': 'Post not found'}
+                
+        except requests.exceptions.RequestException as e:
+            print(f"Error getting post by slug: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def schedule_post(self, post_id: int, publish_date: str) -> Dict[str, Any]:
+        """
+        Schedule a post for future publication.
+        
+        Args:
+            post_id: ID of the post to schedule
+            publish_date: Publication date in ISO 8601 format
+            
+        Returns:
+            Dictionary containing update result
+        """
+        try:
+            update_data = {
+                'status': 'future',
+                'date': publish_date
+            }
+            
+            response = requests.post(
+                f"{self.api_base}/posts/{post_id}",
+                headers=self.headers,
+                data=json.dumps(update_data)
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            print(f"Successfully scheduled post for: {result.get('date')}")
+            
+            return {'success': True, 'data': result}
+            
+        except requests.exceptions.RequestException as e:
+            print(f"Error scheduling post: {e}")
+            return {'success': False, 'error': str(e)}
+   
     def get_or_create_category(self, category_name: str) -> Optional[int]:
         """
         Get category ID by name or create if it doesn't exist.
@@ -318,11 +406,11 @@ class WordPressClient:
 # Example usage
 def example_usage():
     # Initialize WordPress client
-    wp_client = WordPressClient('https://yoursite.com', 'username', 'app_password')
+    wp_client = WordPressClient(api_keys.WORDPRESS_SITE_URL,api_keys.WORDPRESS_USERNAME,api_keys.wordpress_api)
     
     # Upload an image
     image_result = wp_client.upload_image(
-        'path/to/image.jpg',
+        '.\image (2).png',
         title='My Image Title',
         alt_text='Description of the image'
     )
@@ -345,8 +433,52 @@ def example_usage():
     else:
         print(f"Failed to upload image: {image_result['error']}")
 
+import requests
+import base64
+import api_keys
+
+def test_wordpress_auth():
+    """Test WordPress API authentication"""
+    
+    site_url = 'https://moneymindpals.com'
+    username = api_keys.WORDPRESS_USERNAME
+    app_password = api_keys.wordpress_api
+    
+    # Create authentication
+    credentials = f"{username}:{app_password}"
+    token = base64.b64encode(credentials.encode()).decode()
+    
+    headers = {
+        'Authorization': f'Basic {token}',
+        'Content-Type': 'application/json'
+    }
+    
+    # Test with a simple API call
+    try:
+        response = requests.get(
+            f"{site_url}/wp-json/wp/v2/users/me",
+            headers=headers
+        )
+        
+        print(f"Status Code: {response.status_code}")
+        print(f"Response: {response.text}")
+        
+        if response.status_code == 200:
+            print("✅ Authentication successful!")
+            user_data = response.json()
+            print(f"Logged in as: {user_data.get('name', 'Unknown')}")
+            return True
+        else:
+            print("❌ Authentication failed!")
+            return False
+            
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+# if __name__ == "__main__":
+#     test_wordpress_auth()
 
 if __name__ == "__main__":
-    # Uncomment to run the example
-    # example_usage()
+    example_usage()
     pass

@@ -43,7 +43,7 @@ async def scrape_subreddit_data_async(subreddit_name, category, limit=5, filter=
         
         # Fetch posts from Reddit
         subreddit_posts = miner.fetch_subreddit_posts(subreddit_name, category, limit=limit, time_filter="all", filter=filter)
-        
+        print(subreddit_posts)
         # Create tasks for processing each post
         tasks = []
         for i, post in enumerate(subreddit_posts, 1):
@@ -147,40 +147,30 @@ def generate_article_for_first_post():
         print(f"Generating article for post: '{first_post.get('Title', '')}'")
         
         # Construct a prompt for Gemini that includes the question and instructions
-        prompt = f"""
-            Expert financial researcher using real-time data for authoritative content.
-
-            QUESTION: {first_post.get('Title', '')}
-            DETAILS: {first_post.get('Body', '')}
-
+        prompt = f"""Expert financial researcher using real-time data.
+            QUESTION:{first_post.get('Title','')}
+            DETAILS:{first_post.get('Body','')}
             REQUIREMENTS:
-            1. **Sources**: ONLY tier-1 from last 12 months: SEC, Federal Reserve, Bloomberg, Reuters, McKinsey, Deloitte, Statista, Forbes
-            2. **Must Include**: 3+ specific stats with sources, 2+ expert quotes, 1+ real example, tool recommendations with data
-            3. **Citations**: Natural format - "According to January 2025 McKinsey report..." (humanization-friendly)
-
+            1.Sources:ONLY tier-1 last 12mo:SEC,Fed,Bloomberg,Reuters,McKinsey,Deloitte,Statista,Forbes
+            2.Include:3+ stats w/sources,2+ expert quotes,1+ example,tool recs w/data
+            3.Citations:Natural-"According to Jan 2025 McKinsey..."
             STRUCTURE:
-            ## [Direct Answer]
-            - Lead with data-backed answer
-            - Primary statistic with source
-
-            ## [Key Points] 
-            - Numbered/bulleted with supporting data
-            - Specific examples with numbers
-
-            ## [Tools Analysis]
-            - 3-5 tools with pricing, user data, limitations
-            - Include market share or review data
-
-            ## [Expert Views]
-            - 2+ expert opinions with credentials
-            - Include contrasting perspectives
-
-            FORMAT: Markdown headers, start with content (no intro), bold key stats, actionable takeaways.
-
-            FALLBACK: If data limited, state clearly + use most recent with dates.
-
-            Output: Factual, heavily sourced, blog-ready.
-            """
+            [Direct Answer]
+            -Data-backed answer
+            -Primary stat w/source
+            ##[Key Points]
+            -Numbered w/supporting data
+            -Examples w/numbers
+            [Tools Analysis]
+            -3-5 tools w/pricing,1+ limitation/alternative each
+            -"This won't work if..." sections
+            -1+ free alternative per paid tool
+            [Expert Views]
+            -2+ expert opinions w/credentials
+            -Contrasting perspectives
+            FORMAT:Markdown headers,start w/content(no intro),bold key stats,actionable takeaways.
+            FALLBACK:If data limited,state clearly+use most recent w/dates.
+            Output:Factual,heavily sourced,blog-ready."""
         # Generate the article using Gemini with web search enabled
         article_content = gemini_client.generate_text_with_web_search(prompt)
         if not article_content:
@@ -217,24 +207,14 @@ def generate_image_for_article(post_data, article_content):
         # Create a single prompt message that will be used for all API attempts
         # Fix: Use double braces {{ }} to escape them in f-strings
         claude_messages = [
-            {"role": "user", "content": f"""Based on the following article about a finance/business question, create:
-                1. A detailed image prompt that would generate a relevant, professional illustration or visualization
-                2. A concise alt tag (25-40 words) that describes the image for accessibility purposes
-
-                The image should be suitable for a business blog and should visually represent the key concepts in the article. Make the prompt detailed and specific, focusing on creating a professional-looking image that enhances the article's content. IMPORTANT: The image must not contain any text, letters, words.
-
-                ARTICLE TITLE: {post_data.get('Title', '')}
-
-                ARTICLE CONTENT: {article_content}
-
-                Provide your response in JSON format with two fields:
-                {{
-                    "image_prompt": "your detailed image generation prompt here",
-                    "alt_tag": "your concise alt tag description here"
-                }}
-
-                Include ONLY the JSON with no additional text or explanations.
-                For the image_prompt, include this negative prompt: (blurry, low-resolution, pixelated textures, compression artifacts, watermark, text, logo, numbers, letters, words, signs, labels, captions, poor anatomy, extra limbs, fused body parts, misplaced facial features, disproportionate body, stiff or awkward pose, unnatural joint angles, distorted hands or faces, bad composition, flat lighting, overexposed or underexposed areas, washed-out colors, overly saturated tones, muddy shadows, plastic or waxy textures, cartoonish style (unless specified), simplistic or childish look, symmetry glitches, duplicated limbs or faces, noisy background, pattern repetition, incorrect perspective, unrealistic materials, unfinished render, amateurish style)"""}
+            {"role": "user", "content": f"""Create image prompt+alt tag for finance/business article.
+        TITLE:{post_data.get('Title','')}
+        CONTENT:{article_content}
+        Requirements:Professional business blog image,represents key concepts,NO text/letters/words.
+        JSON format:
+        {{"image_prompt":"detailed prompt here","alt_tag":"25-40 words description"}}
+        For image_prompt add negative:(blurry,low-res,pixelated,watermark,text,logo,numbers,letters,words,signs,labels,captions,poor anatomy,extra limbs,fused parts,misplaced features,disproportionate,stiff pose,unnatural angles,distorted hands/faces,bad composition,flat lighting,overexposed,underexposed,washed-out colors,oversaturated,muddy shadows,plastic/waxy textures,cartoonish,simplistic,childish,symmetry glitches,duplicated limbs/faces,noisy background,pattern repetition,incorrect perspective,unrealistic materials,unfinished render,amateurish)
+        Return JSON only."""}
         ]
         
         # Step 1: Generate image prompt and alt tag using Puter API
@@ -437,7 +417,6 @@ def generate_image_for_article(post_data, article_content):
         traceback.print_exc()
         return {"success": False, "error": str(e)}
 
-
 # Function to run the async scraper
 def run_async_scraper(subreddit_name, category="new", limit=5, filter=None):
     start_time = time.time()
@@ -458,7 +437,7 @@ def format_blog_content(post_data, article_content, image_result):
         image_result (dict): The image generation result containing URL and alt tag
         
     Returns:
-        dict: Formatted blog content with title, HTML content, description, and categories
+        dict: Formatted blog content with title, HTML content, description, slug, keywords, and categories
     """
     try:
         print("Starting blog content formatting process...")
@@ -466,67 +445,81 @@ def format_blog_content(post_data, article_content, image_result):
         format_messages = [
                 {"role": "user", "content": f"""
             Transform this into a search-ranking blog post that hooks readers and keeps them engaged:
-
+            try to give content 800+ words to 2000+, and don't need to add css, just pure html.
             Source: {post_data.get('Title', '')}
             Content: {article_content}
-
             JSON Output:
             {{
                 "title": "Search-intent title matching user queries: 'What/How/Why [Topic]?' (50-60 chars)",
                 "content": "Complete HTML optimized for search ranking + engagement",
-                "description": "Meta description with hook + value promise (150-160 chars)",
+                "meta_description": "Meta description with hook + value promise (150-160 chars)",
+                "slug": "seo-friendly-url-slug-with-hyphens",
                 "categories": ["Finance" or "Business"],
-                "keywords": ["primary", "semantic", "search", "terms"]
+                "keywords": ["primary", "semantic", "search", "terms", "long-tail"],
+                "focus_keyword": "primary SEO keyword phrase"
             }}
-
             TITLE STRATEGY:
             - Mirror Google searches: "What Really Matters When...", "How to Actually...", "Why Do Most..."
             - Question-based format matching search behavior
             - Include year for trending: "Best Way to [Action] in 2025"
-
+            SLUG REQUIREMENTS:
+            - Use main keywords from title
+            - Replace spaces with hyphens
+            - Remove special characters
+            - Keep under 60 characters
+            - Make it readable and SEO-friendly
+            META DESCRIPTION:
+            - Hook with benefit or surprising fact
+            - Include primary keyword naturally
+            - Clear value proposition
+            - Call to action implied
+            - 150-160 characters exactly
+            KEYWORDS STRATEGY:
+            - 5-8 total keywords
+            - Include primary keyword (2-3 words)
+            - Add semantic variations
+            - Include long-tail keywords (3-5 words)
+            - Mix of high and low competition terms
             CONTENT STRUCTURE:
-            <h1>Search-Intent Title</h1>
-
+            Include primary keyword naturally, not forced
             HOOK OPENING:
             - Shocking stat or "Most people don't realize..."
             - Authority: "Based on analyzing [X]..." 
             - Promise: "You'll know exactly how to..."
-
             3-4 <h2> SECTIONS by search intent:
             - How to: Complete step-by-step process
             - What: Comprehensive answer covering all aspects
             - Why: Problem + solution addressing search intent
             - Should I: Decision framework answering the question
-
             EACH SECTION:
             - Transition question: "But how do you actually...?"
             - One element: <blockquote>, <div class="tip">, or <div class="chart">
             - Specific examples with numbers/tools
             - Natural bridge to next section
-
             ENGAGEMENT RULES:
             - Short sentences (1-3 lines max)
             - Use "you" directly + contractions
             - Include analogies: "Think of it like..."
             - Add mini-stories: "I once saw..."
             - Front-load value in first 30 seconds
-
             OPTIMIZATION:
             - H2s cover related "People Also Ask" questions
             - Semantic keywords throughout
             - Definitive statements for AI citations
             - Scannable with subheadings every 150-200 words
             - End with genuine insight, not generic wrap-up
-
             WRITING TONE:
+            - Add personal stakes: "I've seen businesses fail because..."
+            - Include specific timelines: "Month 1: expect this, Month 3: watch for that"
+            - Add vulnerability: "The hardest part isn't the strategy, it's..."
             - Hook like viral content, deliver like expert guide
             - Casual but informed - knowledgeable friend sharing tips
             - Substance over hype - every sentence adds value
             - No repetitive power words
-
             Return ONLY valid JSON without markdown backticks.
             """}
             ]
+        
         # Step 1: Try Puter API first
         print("Formatting blog content using Puter API...")
         from puter_api import ChatCompletion
@@ -546,6 +539,20 @@ def format_blog_content(post_data, article_content, image_result):
             
             try:
                 blog_data = json.loads(response_text)
+                
+                # Ensure all required fields are present
+                required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
+                for field in required_fields:
+                    if field not in blog_data:
+                        if field == 'slug':
+                            blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
+                        elif field == 'meta_description':
+                            blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
+                        elif field == 'categories':
+                            blog_data['categories'] = ['Finance']
+                        elif field == 'keywords':
+                            blog_data['keywords'] = ['finance', 'business']
+                
                 print("Successfully formatted blog content using Puter API")
                 return blog_data
                 
@@ -576,6 +583,19 @@ def format_blog_content(post_data, article_content, image_result):
                         blog_data = json.loads(json_match.group(0))
                     else:
                         raise
+                
+                # Ensure all required fields are present
+                required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
+                for field in required_fields:
+                    if field not in blog_data:
+                        if field == 'slug':
+                            blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
+                        elif field == 'meta_description':
+                            blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
+                        elif field == 'categories':
+                            blog_data['categories'] = ['Finance']
+                        elif field == 'keywords':
+                            blog_data['keywords'] = ['finance', 'business']
                 
                 print("Successfully formatted blog content using GitHub API")
                 return blog_data
@@ -609,13 +629,29 @@ def format_blog_content(post_data, article_content, image_result):
                                 # Third attempt: If no JSON found, create a structured response from the text
                                 print("No JSON found in Gemini response, creating structured format from text")
                                 # Create a basic structure with the text content
+                                title = post_data.get('Title', 'Finance Article')
                                 blog_data = {
-                                    "title": post_data.get('Title', ''),
+                                    "title": title,
                                     "content": f"<p>{gemini_response}</p>",
-                                    "description": gemini_response[:150] + "...",
-                                    "categories": [post_data.get('LinkFlairText', 'General')],
-                                    "keywords": [post_data.get('LinkFlairText', 'General')]
+                                    "meta_description": gemini_response[:150] + "...",
+                                    "slug": create_slug_from_title(title),
+                                    "categories": [post_data.get('LinkFlairText', 'Finance')],
+                                    "keywords": [post_data.get('LinkFlairText', 'finance'), 'business'],
+                                    "focus_keyword": post_data.get('LinkFlairText', 'finance')
                                 }
+                        
+                        # Ensure all required fields are present
+                        required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
+                        for field in required_fields:
+                            if field not in blog_data:
+                                if field == 'slug':
+                                    blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
+                                elif field == 'meta_description':
+                                    blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
+                                elif field == 'categories':
+                                    blog_data['categories'] = ['Finance']
+                                elif field == 'keywords':
+                                    blog_data['keywords'] = ['finance', 'business']
                         
                         print("Successfully formatted blog content using Gemini")
                         return blog_data
@@ -623,12 +659,15 @@ def format_blog_content(post_data, article_content, image_result):
                     except Exception as json_error:
                         print(f"Error parsing Gemini response: {json_error}")
                         # Create a fallback response structure
+                        title = post_data.get('Title', 'Finance Article')
                         fallback_data = {
-                            "title": post_data.get('Title', ''),
+                            "title": title,
                             "content": f"<p>{article_content}</p>",
-                            "description": article_content[:150] + "...",
-                            "categories": [post_data.get('LinkFlairText', 'General')],
-                            "keywords": [post_data.get('LinkFlairText', 'General')]
+                            "meta_description": article_content[:150] + "...",
+                            "slug": create_slug_from_title(title),
+                            "categories": [post_data.get('LinkFlairText', 'Finance')],
+                            "keywords": [post_data.get('LinkFlairText', 'finance'), 'business'],
+                            "focus_keyword": post_data.get('LinkFlairText', 'finance')
                         }
                         print("Using fallback blog content structure")
                         return fallback_data
@@ -636,12 +675,15 @@ def format_blog_content(post_data, article_content, image_result):
                 except Exception as gemini_error:
                     print(f"Error using Gemini for blog formatting: {gemini_error}")
                     # Return final fallback
+                    title = post_data.get('Title', 'Finance Article')
                     return {
-                        "title": post_data.get('Title', ''),
+                        "title": title,
                         "content": f"<p>{article_content}</p>",
-                        "description": article_content[:150] + "...",
-                        "categories": [post_data.get('LinkFlairText', 'General')],
-                        "keywords": [post_data.get('LinkFlairText', 'General')]
+                        "meta_description": article_content[:150] + "...",
+                        "slug": create_slug_from_title(title),
+                        "categories": [post_data.get('LinkFlairText', 'Finance')],
+                        "keywords": [post_data.get('LinkFlairText', 'finance'), 'business'],
+                        "focus_keyword": post_data.get('LinkFlairText', 'finance')
                     }
                 
     except Exception as e:
@@ -650,17 +692,49 @@ def format_blog_content(post_data, article_content, image_result):
         traceback.print_exc()
         return {"error": str(e)}
 
-def post_to_wordpress(blog_content, image_result, wordpress_site_url):
+def create_slug_from_title(title):
     """
-    Post content to WordPress as a draft after uploading the image.
+    Create a URL-friendly slug from a title
+    
+    Args:
+        title (str): The title to convert to slug
+        
+    Returns:
+        str: URL-friendly slug
+    """
+    import re
+    
+    if not title:
+        return "article"
+    
+    # Convert to lowercase
+    slug = title.lower()
+    
+    # Replace spaces and special characters with hyphens
+    slug = re.sub(r'[^\w\s-]', '', slug)
+    slug = re.sub(r'[-\s]+', '-', slug)
+    
+    # Remove leading/trailing hyphens
+    slug = slug.strip('-')
+    
+    # Limit length to 60 characters
+    if len(slug) > 60:
+        slug = slug[:60].rstrip('-')
+    
+    return slug or "article"
+
+def post_to_wordpress(blog_content, image_result, wordpress_site_url, schedule_datetime=None):
+    """
+    Post content to WordPress as a draft or scheduled post after uploading the image.
 
     Args:
-        blog_content (dict): The formatted blog content
+        blog_content (dict): The formatted blog content with all SEO fields
         image_result (dict): The image generation result with local file path
         wordpress_site_url (str): The WordPress site URL
+        schedule_datetime (datetime, optional): When to publish the post (for scheduling)
 
     Returns:
-        dict: Result of the WordPress posting operation
+        dict: Result of the WordPress posting operation with full URL info
     """
     try:
         print("Posting to WordPress...")
@@ -700,28 +774,78 @@ def post_to_wordpress(blog_content, image_result, wordpress_site_url):
         if image_url and image_result.get('alt_tag'):
             # Add image at the beginning of content if not already present
             if not content.strip().startswith('<img'):
-                image_tag = f'<img src="{image_url}" alt="{image_result.get("alt_tag", "")}" style="width: 100%; height: auto; margin-bottom: 20px;">'
-                content = image_tag + content
+                image_tag = f'''<figure class="wp-block-image size-large">
+                                    <img src="{image_url}" alt="{image_result.get('alt_tag', '')}" class="wp-image-{featured_media_id or ''}" style="width: 100%; height: auto;"/>
+                                    <figcaption>{image_result.get('alt_tag', '')}</figcaption>
+                                </figure>'''
+                content = image_tag + '\n\n' + content
 
-        # Create WordPress post as draft
-        post_result = wp_client.create_post(
+        # Determine post status
+        post_status = 'draft'  # Default to draft
+        
+        ## SCHEDULER FUNCTIONALITY (commented out for future implementation)
+        # if schedule_datetime:
+        #     from datetime import datetime
+        #     import pytz
+        #     
+        #     # Convert schedule_datetime to WordPress format
+        #     if isinstance(schedule_datetime, str):
+        #         schedule_datetime = datetime.fromisoformat(schedule_datetime.replace('Z', '+00:00'))
+        #     
+        #     # Ensure timezone awareness
+        #     if schedule_datetime.tzinfo is None:
+        #         schedule_datetime = pytz.utc.localize(schedule_datetime)
+        #     
+        #     # Format for WordPress (ISO 8601)
+        #     wordpress_date = schedule_datetime.strftime('%Y-%m-%dT%H:%M:%S')
+        #     post_status = 'future'
+        #     
+        #     print(f"Scheduling post for: {wordpress_date}")
+        # else:
+        #     wordpress_date = None
+
+        # Create WordPress post with enhanced SEO data
+        post_result = wp_client.create_post_enhanced(
             title=blog_content.get('title', ''),
             content=content,
-            status='draft',  # Always create as draft
+            status=post_status,
             categories=blog_content.get('categories', []),
             tags=blog_content.get('keywords', []),
             featured_media=featured_media_id,
-            excerpt=blog_content.get('description', '')
+            excerpt=blog_content.get('meta_description', ''),
+            slug=blog_content.get('slug', ''),
+            meta_description=blog_content.get('meta_description', ''),
+            focus_keyword=blog_content.get('focus_keyword', ''),
+            # date=wordpress_date if schedule_datetime else None  # Uncomment for scheduling
         )
 
         if post_result['success']:
-            print(f"Successfully created WordPress draft: {post_result['edit_url']}")
+            # Generate full URLs
+            post_url = post_result['url']
+            if blog_content.get('slug'):
+                # WordPress automatically uses the slug in the URL
+                expected_url = f"{wordpress_site_url.rstrip('/')}/{blog_content['slug']}/"
+                print(f"Expected public URL: {expected_url}")
+            
+            print(f"Successfully created WordPress post: {post_result['edit_url']}")
+            print(f"Post URL: {post_url}")
+            print(f"Post slug: {blog_content.get('slug', 'auto-generated')}")
+            
             return {
                 'success': True,
-                'url': post_result['url'],
+                'url': post_url,
+                'expected_url': expected_url if blog_content.get('slug') else post_url,
                 'edit_url': post_result['edit_url'],
                 'post_id': post_result['post_id'],
-                'status': 'draft'
+                'status': post_status,
+                'slug': blog_content.get('slug', ''),
+                'title': blog_content.get('title', ''),
+                'meta_description': blog_content.get('meta_description', ''),
+                'keywords': blog_content.get('keywords', []),
+                'categories': blog_content.get('categories', []),
+                ## SCHEDULER INFO (commented out)
+                # 'scheduled_date': wordpress_date if schedule_datetime else None,
+                # 'is_scheduled': bool(schedule_datetime)
             }
         else:
             print(f"Failed to create WordPress post: {post_result.get('error')}")
@@ -732,12 +856,13 @@ def post_to_wordpress(blog_content, image_result, wordpress_site_url):
         import traceback
         traceback.print_exc()
         return {'success': False, 'error': str(e)}
+
 # Main execution
 if __name__ == "__main__":
 
     # Subreddit to scrape
-    subreddit_name = "https://www.reddit.com/user/old_temperature4590/m/financebusiness"
-    
+    subreddit_name = "https://www.reddit.com/user/saasproject/m/finbuzz_custom"
+
     # Example of using filter
     filter_flairs = ["Question", "Help"]
     
@@ -745,53 +870,78 @@ if __name__ == "__main__":
     run_async_scraper(
         subreddit_name=subreddit_name,
         category="new",
-        limit=5,
+        limit=2,
         filter=filter_flairs
     )
     
     # After scraping is complete, generate an article for the first post
     # but don't save it to the sheet yet
-    post_data, article_content = generate_article_for_first_post()
     
-    if post_data and article_content:
-        print("Article generation successful!")
-        print(f"Post title: {post_data.get('Title', '')}")
-        print(f"Article preview: {article_content[:200]}...")
-
-        # Generate an image for the article
-        image_result = generate_image_for_article(post_data, article_content)
+    for i in range(1):
+        post_data, article_content = generate_article_for_first_post()
         
-        if image_result.get("success", True):
-            print(f"Image generation successful! Saved to: {image_result.get('image_path')}")
-            
-            # Format blog content
-            blog_content = format_blog_content(post_data, article_content, image_result)
-            
-            if "error" not in blog_content:
-                print("Blog content formatting successful!")
-                print(f"Formatted title: {blog_content.get('title')}")
-                print(f"Categories: {', '.join(blog_content.get('categories', []))}")                
-                
-                # In the main execution block, modify the image tag replacement code
-                # Replace the blank <img/> tag with the actual image tag
-                if 'content' in blog_content:
-                    # No longer replacing image tags directly, WordPress handles this
-                    print("Image tag replacement not needed, WordPress handles image insertion.")
-                
-                # Post to WordPress as draft
-                post_result = post_to_wordpress(blog_content, image_result, api_keys.WORDPRESS_SITE_URL)
+        if post_data and article_content:
+            print("Article generation successful!")
+            print(f"Post title: {post_data.get('Title', '')}")
+            print(f"Article preview: {article_content[:200]}...")
 
-                if post_result.get('success'):
-                    print(f"Successfully created WordPress draft: {post_result.get('edit_url')}")
-                    print(f"WordPress post URL: {post_result.get('url')}")
-                    # After successfully posting to WordPress
-                    if sheets_client.mark_post_as_done():
-                        print("Successfully moved post to done_article sheet")
+            # Generate an image for the article
+            image_result = generate_image_for_article(post_data, article_content)
+            
+            if image_result.get("success", True):
+                print(f"Image generation successful! Saved to: {image_result.get('image_path')}")
+                
+                # Format blog content with enhanced SEO features
+                blog_content = format_blog_content(post_data, article_content, image_result)
+                
+                if "error" not in blog_content:
+                    print("Blog content formatting successful!")
+                    print(f"Formatted title: {blog_content.get('title')}")
+                    print(f"Meta description: {blog_content.get('meta_description')}")
+                    print(f"Slug: {blog_content.get('slug')}")
+                    print(f"Keywords: {', '.join(blog_content.get('keywords', []))}")
+                    print(f"Categories: {', '.join(blog_content.get('categories', []))}")
+                    
+                    ## SCHEDULER EXAMPLE (commented out for future implementation)
+                    # from datetime import datetime, timedelta
+                    # schedule_time = datetime.now() + timedelta(hours=2)  # Schedule 2 hours from now
+                    # print(f"Scheduling post for: {schedule_time}")
+                    
+                    # Post to WordPress as draft with enhanced SEO
+                    post_result = post_to_wordpress(
+                        blog_content, 
+                        image_result, 
+                        api_keys.WORDPRESS_SITE_URL,
+                        # schedule_datetime=schedule_time  # Uncomment for scheduling
+                    )
+
+                    if post_result.get('success'):
+                        print("✅ WordPress Post Created Successfully!")
+                        print(f"📝 Title: {post_result.get('title')}")
+                        print(f"🔗 Post URL: {post_result.get('url')}")
+                        print(f"🎯 Expected URL: {post_result.get('expected_url')}")
+                        print(f"✏️ Edit URL: {post_result.get('edit_url')}")
+                        print(f"📊 Status: {post_result.get('status')}")
+                        print(f"🏷️ Slug: {post_result.get('slug')}")
+                        print(f"📋 Meta Description: {post_result.get('meta_description')}")
+                        print(f"🔍 Keywords: {', '.join(post_result.get('keywords', []))}")
+                        print(f"📁 Categories: {', '.join(post_result.get('categories', []))}")
+                        
+                        ## SCHEDULER INFO (commented out)
+                        # if post_result.get('is_scheduled'):
+                        #     print(f"⏰ Scheduled for: {post_result.get('scheduled_date')}")
+                        
+                        # After successfully posting to WordPress
+                        if sheets_client.mark_post_as_done():
+                            print("✅ Successfully moved post to done_article sheet")
+                        else:
+                            print("❌ Failed to move post to done_article sheet")
                     else:
-                        print("Failed to move post to done_article sheet")
+                        print(f"❌ Failed to post to WordPress: {post_result.get('error')}")
                 else:
-                    print(f"Failed to post to WordPress: {post_result.get('error')}")
+                    print(f"❌ Blog content formatting failed: {blog_content.get('error')}")
             else:
-                print(f"Blog content formatting failed: {blog_content.get('error')}")
-        else:
-            print(f"Image generation failed: {image_result.get('error', 'Unknown error')}")
+                print(f"Image generation failed: {image_result.get('error', 'Unknown error')}")
+
+
+

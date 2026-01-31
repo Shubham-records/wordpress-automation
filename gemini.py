@@ -424,37 +424,16 @@ class GeminiClient:
                 })
             
             # Create a PDF-like prompt with clear structure
-            prompt = f"""
-            # Reddit Post Analysis Task
-            
-            Analyze the following Reddit posts and determine which ones are good questions related to finance or business.
-            
-            ## Posts to Analyze:
-            # Using Python file: {temp_file_path}
-            
-            ## Evaluation Criteria:
-            1. Is this post related to finance or business? (true/false)
-            2. Is this a question? (true/false)
-            3. Rate the quality of this question from 1-10
-            4. Provide a brief reason for your rating
-            
-            ## Required Output Format:
-            Return ONLY a JSON array with one object per post, using the following structure:
-            [
-                {{
-                    "id": 0,
-                    "is_finance_business": true/false,
-                    "is_question": true/false,
-                    "quality_rating": 1-10,
-                    "rating_reason": "brief explanation",
-                    "should_process": true/false
-                }},
-                ...
-            ]
-            
-            The "should_process" field should be true only if both "is_finance_business" and "is_question" are true AND quality_rating is 5 or higher.
-            In your response, Do not include any introduction, explanation, or additional text.
-            """
+            prompt = f"""Analyze Reddit posts for blog content quality.
+            Posts:{temp_file_path}
+            Criteria:
+            1.Finance/business related?(T/F)
+            2.Clear answerable question?(T/F)
+            3.SEO rating(1-10):Google searchable?Long-tail keywords?Engagement?Unique angle?Low competition?
+            JSON format:
+            [{{"id":0,"is_finance_business":true/false,"is_question":true/false,"quality_rating":1-10,"rating_reason":"brief","should_process":true/false}}]
+            should_process=true only if: is_finance_business=true AND is_question=true AND quality_rating>=7.5
+            Return JSON only."""
             
             # Read the Python file content
             with open(temp_file_path, 'rb') as f:

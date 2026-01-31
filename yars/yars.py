@@ -226,7 +226,7 @@ class YARS:
         if category not in ["hot", "top", "new", "userhot", "usertop", "usernew"]:
             raise ValueError("Category for Subredit must be either 'hot', 'top', or 'new' or for User must be 'userhot', 'usertop', or 'usernew'")
 
-        batch_size = min(100, limit)
+        batch_size = min(1, limit)
         total_fetched = 0
         after = None
         all_posts = []
@@ -247,9 +247,9 @@ class YARS:
 
             params = {
                 "limit": batch_size,
-                "after": after,
-                "raw_json": 1,
-                "t": time_filter,
+                # "after": after,
+                # "raw_json": 1,
+                # "t": time_filter,
             }
             response = None
             try:
