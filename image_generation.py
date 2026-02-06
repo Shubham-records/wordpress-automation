@@ -20,30 +20,31 @@ class ImageGeneration:
                       n: int = 1,
                       save_path: Optional[str] = None) -> Dict[str, Any]:
         
-        response = self.client.images.generate(
-            prompt=prompt,
-            model=self.model,
-            width=width,
-            height=height,
-            steps=steps,
-            n=n,
-            response_format="b64_json"
-        )
-        
-        # Get the base64 encoded image data
-        image_data = response.data[0].b64_json
-        
-        result = {
-            "response": response,
-            "image_data": image_data
-        }
-        
-        # Save the image if a path is provided
-        if save_path:
-            self.save_image(image_data, save_path)
-            result["saved_path"] = save_path
-        
-        return result
+        # response = self.client.images.generate(
+        #     prompt=prompt,
+        #     model=self.model,
+        #     width=width,
+        #     height=height,
+        #     steps=steps,
+        #     n=n,
+        #     response_format="b64_json"
+        # )
+        # 
+        # # Get the base64 encoded image data
+        # image_data = response.data[0].b64_json
+        # 
+        # result = {
+        #     "response": response,
+        #     "image_data": image_data
+        # }
+        # 
+        # # Save the image if a path is provided
+        # if save_path:
+        #     self.save_image(image_data, save_path)
+        #     result["saved_path"] = save_path
+        # 
+        # return result
+        return {"success": False, "error": "Together API is disabled"}
     
     def save_image(self, image_data: str, output_path: Optional[str] = None) -> str:
         if not image_data:

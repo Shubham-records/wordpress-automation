@@ -218,96 +218,97 @@ def generate_image_for_article(post_data, article_content):
         ]
         
         # Step 1: Generate image prompt and alt tag using Puter API
-        print("Generating image prompt and alt tag using Puter API...")
-        from puter_api import ChatCompletion
-        import json
-        
-        try:
-            # Try using Claude via Puter API
-            claude_response = ChatCompletion.create(
-                messages=claude_messages
-            )
-            # The updated ChatCompletion.create() will handle model selection and API key rotation
-            
-            # Handle the response based on whether it's a success or error
-            if isinstance(claude_response, dict) and "error" in claude_response:
-                # If we got an error response, raise an exception to trigger the GitHub fallback
-                raise Exception(f"Error from ChatCompletion: {claude_response['error']}")
-            
-            # Parse the response - the format depends on whether Claude or GPT-4o was used
-            if isinstance(claude_response, str):
-                # Direct text response from Claude
-                response_text = claude_response
-            else:
-                # Response object from GPT-4o
-                response_text = claude_response['result']['message']['content']
-                
-            # Parse the JSON response
-            try:
-                image_data = json.loads(response_text)
-                image_prompt = image_data.get("image_prompt", "")
-                alt_tag = image_data.get("alt_tag", "")
-                print(f"Successfully generated image prompt using Puter API: {image_prompt[:100]}...")
-                print(f"Alt tag: {alt_tag}")
-            except json.JSONDecodeError:
-                # If JSON parsing fails, use the text as image prompt and generate a generic alt tag
-                image_prompt = response_text
-                alt_tag = f"Image related to {post_data.get('Title', '')}"  
-                print("Failed to parse JSON response from Puter API, using text as image prompt")
-                
-        except Exception as claude_error:
-            print(f"Error using Puter API for image prompt: {claude_error}")
-            
-            # Step 2: Fall back to GitHub API
-            print("Falling back to GitHub API for image prompt and alt tag generation...")
-            from github_api import GitHubCompletion
-            
-            try:
-                # Try using GitHub API with the same messages
-                github_response = GitHubCompletion.create(claude_messages)
-                
-                # Handle the response based on whether it's a success or error
-                if isinstance(github_response, dict) and "error" in github_response:
-                    # If we got an error response, raise an exception to trigger the Gemini fallback
-                    raise Exception(f"Error from GitHubCompletion: {github_response['error']}")
-                
-                # Parse the JSON response
-                try:
-                    # First attempt: direct JSON parsing
-                    try:
-                        image_data = json.loads(github_response)
-                        image_prompt = image_data.get("image_prompt", "")
-                        alt_tag = image_data.get("alt_tag", "")
-                    except json.JSONDecodeError:
-                        # Second attempt: Try to extract JSON from text (in case there's additional text)
-                        import re
-                        json_match = re.search(r'\{{[\s\S]*\}}', github_response)
-                        if json_match:
-                            try:
-                                json_str = json_match.group(0)
-                                image_data = json.loads(json_str)
-                                image_prompt = image_data.get("image_prompt", "")
-                                alt_tag = image_data.get("alt_tag", "")
-                            except json.JSONDecodeError:
-                                raise  # Re-raise to be caught by outer exception handler
-                        else:
-                            raise json.JSONDecodeError("No JSON object found in response", github_response, 0)
-                    
-                    # Validate that we have meaningful content
-                    if not image_prompt.strip():
-                        raise ValueError("Empty image prompt in parsed JSON")
-                        
-                    print(f"Successfully generated image prompt using GitHub API: {image_prompt[:100]}...")
-                    print(f"Alt tag: {alt_tag}")
-                except (json.JSONDecodeError, ValueError) as json_error:
-                    # If JSON parsing fails, use the text as image prompt and generate a generic alt tag
-                    print(f"Failed to parse JSON response from GitHub API: {json_error}")
-                    image_prompt = github_response
-                    alt_tag = f"Image related to {post_data.get('Title', '')}"  
-                    print("Using text as image prompt instead")
-                    
-            except Exception as github_error:
-                print(f"Error using GitHub API for image prompt: {github_error}")
+        # print("Generating image prompt and alt tag using Puter API...")
+        # from puter_api import ChatCompletion
+        # import json
+        # 
+        # try:
+        #     # Try using Claude via Puter API
+        #     claude_response = ChatCompletion.create(
+        #         messages=claude_messages
+        #     )
+        #     # The updated ChatCompletion.create() will handle model selection and API key rotation
+        #     
+        #     # Handle the response based on whether it's a success or error
+        #     if isinstance(claude_response, dict) and "error" in claude_response:
+        #         # If we got an error response, raise an exception to trigger the GitHub fallback
+        #         raise Exception(f"Error from ChatCompletion: {claude_response['error']}")
+        #     
+        #     # Parse the response - the format depends on whether Claude or GPT-4o was used
+        #     if isinstance(claude_response, str):
+        #         # Direct text response from Claude
+        #         response_text = claude_response
+        #     else:
+        #         # Response object from GPT-4o
+        #         response_text = claude_response['result']['message']['content']
+        #         
+        #     # Parse the JSON response
+        #     try:
+        #         image_data = json.loads(response_text)
+        #         image_prompt = image_data.get("image_prompt", "")
+        #         alt_tag = image_data.get("alt_tag", "")
+        #         print(f"Successfully generated image prompt using Puter API: {image_prompt[:100]}...")
+        #         print(f"Alt tag: {alt_tag}")
+        #     except json.JSONDecodeError:
+        #         # If JSON parsing fails, use the text as image prompt and generate a generic alt tag
+        #         image_prompt = response_text
+        #         alt_tag = f"Image related to {post_data.get('Title', '')}"  
+        #         print("Failed to parse JSON response from Puter API, using text as image prompt")
+        #         
+        # except Exception as claude_error:
+        #     print(f"Error using Puter API for image prompt: {claude_error}")
+        #     
+        #     # Step 2: Fall back to GitHub API
+        #     print("Falling back to GitHub API for image prompt and alt tag generation...")
+        #     from github_api import GitHubCompletion
+        #     
+        #     try:
+        #         # Try using GitHub API with the same messages
+        #         github_response = GitHubCompletion.create(claude_messages)
+        #         
+        #         # Handle the response based on whether it's a success or error
+        #         if isinstance(github_response, dict) and "error" in github_response:
+        #             # If we got an error response, raise an exception to trigger the Gemini fallback
+        #             raise Exception(f"Error from GitHubCompletion: {github_response['error']}")
+        #         
+        #         # Parse the JSON response
+        #         try:
+        #             # First attempt: direct JSON parsing
+        #             try:
+        #                 image_data = json.loads(github_response)
+        #                 image_prompt = image_data.get("image_prompt", "")
+        #                 alt_tag = image_data.get("alt_tag", "")
+        #             except json.JSONDecodeError:
+        #                 # Second attempt: Try to extract JSON from text (in case there's additional text)
+        #                 import re
+        #                 json_match = re.search(r'\{{[\s\S]*\}}', github_response)
+        #                 if json_match:
+        #                     try:
+        #                         json_str = json_match.group(0)
+        #                         image_data = json.loads(json_str)
+        #                         image_prompt = image_data.get("image_prompt", "")
+        #                         alt_tag = image_data.get("alt_tag", "")
+        #                     except json.JSONDecodeError:
+        #                         raise  # Re-raise to be caught by outer exception handler
+        #                 else:
+        #                     raise json.JSONDecodeError("No JSON object found in response", github_response, 0)
+        #             
+        #             # Validate that we have meaningful content
+        #             if not image_prompt.strip():
+        #                 raise ValueError("Empty image prompt in parsed JSON")
+        #                 
+        #             print(f"Successfully generated image prompt using GitHub API: {image_prompt[:100]}...")
+        #             print(f"Alt tag: {alt_tag}")
+        #         except (json.JSONDecodeError, ValueError) as json_error:
+        #             # If JSON parsing fails, use the text as image prompt and generate a generic alt tag
+        #             print(f"Failed to parse JSON response from GitHub API: {json_error}")
+        #             image_prompt = github_response
+        #             alt_tag = f"Image related to {post_data.get('Title', '')}"  
+        #             print("Using text as image prompt instead")
+        #             
+        #     except Exception as github_error:
+        #         print(f"Error using GitHub API for image prompt: {github_error}")
+
                 
                 # Step 3: Fall back to Gemini for image prompt and alt tag
                 print("Falling back to Gemini for image prompt and alt tag generation...")
@@ -348,51 +349,52 @@ def generate_image_for_article(post_data, article_content):
                     print("Using text as image prompt instead")
         
         # Step 4: Generate the image using Together API via ImageGeneration class
-        print("Generating image using Together API...")
-        from image_generation import ImageGeneration
-        image_generator = ImageGeneration()
-        
-        # Generate a filename based on the post title
-        import re
-        safe_title = re.sub(r'[^\w\s-]', '', post_data.get('Title', 'article_image')).strip().replace(' ', '_')
-        image_path = f"{safe_title}_image.png"
-        
-        try:
-            # Try using Together API for image generation
-            image_result = image_generator.generate_image(
-                prompt=image_prompt,
-                width=1280,
-                height=720,
-                steps=4,
-                n=1,
-                save_path=image_path
-            )
-            print(f"Successfully generated image using Together API: {image_path}")
-            # In the generate_image_for_article function, modify the upscaling section:
-            print("Upscaling the generated image...")
-            from upload_image import process_image
-            
-            # Process the image with 2x upscaling and a 60-second timeout
-            upscale_result = process_image(
-                image_path=image_path,
-                scale_factor="2x",
-                save_result=True,
-                output_dir="processed_images",
-                timeout=60  # 1 minute timeout
-            )
-            
-            if upscale_result.get("status") == "success" and upscale_result.get("local_path"):
-                upscaled_image_path = upscale_result.get("local_path")
-                print(f"Successfully upscaled image in {upscale_result.get('processing_time', 0):.2f} seconds: {upscaled_image_path}")
-            elif upscale_result.get("status") == "timeout":
-                print(f"Upscaling timed out after {upscale_result.get('processing_time', 60):.2f} seconds, using original image: {image_path}")
-                upscaled_image_path = image_path
-            else:
-                print(f"Upscaling failed, using original image: {image_path}")
-                upscaled_image_path = image_path
-            
-        except Exception as together_error:
-            print(f"Error using Together API for image generation: {together_error}")
+        # print("Generating image using Together API...")
+        # from image_generation import ImageGeneration
+        # image_generator = ImageGeneration()
+        # 
+        # # Generate a filename based on the post title
+        # import re
+        # safe_title = re.sub(r'[^\w\s-]', '', post_data.get('Title', 'article_image')).strip().replace(' ', '_')
+        # image_path = f"{safe_title}_image.png"
+        # 
+        # try:
+        #     # Try using Together API for image generation
+        #     image_result = image_generator.generate_image(
+        #         prompt=image_prompt,
+        #         width=1280,
+        #         height=720,
+        #         steps=4,
+        #         n=1,
+        #         save_path=image_path
+        #     )
+        #     print(f"Successfully generated image using Together API: {image_path}")
+        #     # In the generate_image_for_article function, modify the upscaling section:
+        #     print("Upscaling the generated image...")
+        #     from upload_image import process_image
+        #     
+        #     # Process the image with 2x upscaling and a 60-second timeout
+        #     upscale_result = process_image(
+        #         image_path=image_path,
+        #         scale_factor="2x",
+        #         save_result=True,
+        #         output_dir="processed_images",
+        #         timeout=60  # 1 minute timeout
+        #     )
+        #     
+        #     if upscale_result.get("status") == "success" and upscale_result.get("local_path"):
+        #         upscaled_image_path = upscale_result.get("local_path")
+        #         print(f"Successfully upscaled image in {upscale_result.get('processing_time', 0):.2f} seconds: {upscaled_image_path}")
+        #     elif upscale_result.get("status") == "timeout":
+        #         print(f"Upscaling timed out after {upscale_result.get('processing_time', 60):.2f} seconds, using original image: {image_path}")
+        #         upscaled_image_path = image_path
+        #     else:
+        #         print(f"Upscaling failed, using original image: {image_path}")
+        #         upscaled_image_path = image_path
+        #     
+        # except Exception as together_error:
+        #     print(f"Error using Together API for image generation: {together_error}")
+
             
             # Step 6: Fall back to Gemini for image generation (if implemented)
             print("Falling back to Gemini for image generation...")
@@ -521,87 +523,88 @@ def format_blog_content(post_data, article_content, image_result):
             ]
         
         # Step 1: Try Puter API first
-        print("Formatting blog content using Puter API...")
-        from puter_api import ChatCompletion
-        import json
-        
-        try:
-            # Try using Claude via Puter API
-            puter_response = ChatCompletion.create(
-                messages=format_messages
-            )
-            
-            if isinstance(puter_response, dict) and "error" in puter_response:
-                raise Exception(f"Error from ChatCompletion: {puter_response['error']}")
-            
-            # Parse the response
-            response_text = puter_response if isinstance(puter_response, str) else puter_response['result']['message']['content']
-            
-            try:
-                blog_data = json.loads(response_text)
-                
-                # Ensure all required fields are present
-                required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
-                for field in required_fields:
-                    if field not in blog_data:
-                        if field == 'slug':
-                            blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
-                        elif field == 'meta_description':
-                            blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
-                        elif field == 'categories':
-                            blog_data['categories'] = ['Finance']
-                        elif field == 'keywords':
-                            blog_data['keywords'] = ['finance', 'business']
-                
-                print("Successfully formatted blog content using Puter API")
-                return blog_data
-                
-            except json.JSONDecodeError:
-                raise Exception("Failed to parse JSON response from Puter API")
-                
-        except Exception as puter_error:
-            print(f"Error using Puter API for blog formatting: {puter_error}")
-            
-            # Step 2: Fall back to GitHub API
-            print("Falling back to GitHub API for blog formatting...")
-            from github_api import GitHubCompletion
-            
-            try:
-                github_response = GitHubCompletion.create(format_messages)
-                
-                if isinstance(github_response, dict) and "error" in github_response:
-                    raise Exception(f"Error from GitHubCompletion: {github_response['error']}")
-                
-                try:
-                    # First attempt: direct JSON parsing
-                    blog_data = json.loads(github_response)
-                except json.JSONDecodeError:
-                    # Second attempt: Try to extract JSON from text
-                    import re
-                    json_match = re.search(r'\{{[\s\S]*\}}', github_response)
-                    if json_match:
-                        blog_data = json.loads(json_match.group(0))
-                    else:
-                        raise
-                
-                # Ensure all required fields are present
-                required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
-                for field in required_fields:
-                    if field not in blog_data:
-                        if field == 'slug':
-                            blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
-                        elif field == 'meta_description':
-                            blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
-                        elif field == 'categories':
-                            blog_data['categories'] = ['Finance']
-                        elif field == 'keywords':
-                            blog_data['keywords'] = ['finance', 'business']
-                
-                print("Successfully formatted blog content using GitHub API")
-                return blog_data
-                
-            except Exception as github_error:
-                print(f"Error using GitHub API for blog formatting: {github_error}")
+        # print("Formatting blog content using Puter API...")
+        # from puter_api import ChatCompletion
+        # import json
+        # 
+        # try:
+        #     # Try using Claude via Puter API
+        #     puter_response = ChatCompletion.create(
+        #         messages=format_messages
+        #     )
+        #     
+        #     if isinstance(puter_response, dict) and "error" in puter_response:
+        #         raise Exception(f"Error from ChatCompletion: {puter_response['error']}")
+        #     
+        #     # Parse the response
+        #     response_text = puter_response if isinstance(puter_response, str) else puter_response['result']['message']['content']
+        #     
+        #     try:
+        #         blog_data = json.loads(response_text)
+        #         
+        #         # Ensure all required fields are present
+        #         required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
+        #         for field in required_fields:
+        #             if field not in blog_data:
+        #                 if field == 'slug':
+        #                     blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
+        #                 elif field == 'meta_description':
+        #                     blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
+        #                 elif field == 'categories':
+        #                     blog_data['categories'] = ['Finance']
+        #                 elif field == 'keywords':
+        #                     blog_data['keywords'] = ['finance', 'business']
+        #         
+        #         print("Successfully formatted blog content using Puter API")
+        #         return blog_data
+        #         
+        #     except json.JSONDecodeError:
+        #         raise Exception("Failed to parse JSON response from Puter API")
+        #         
+        # except Exception as puter_error:
+        #     print(f"Error using Puter API for blog formatting: {puter_error}")
+        #     
+        #     # Step 2: Fall back to GitHub API
+        #     print("Falling back to GitHub API for blog formatting...")
+        #     from github_api import GitHubCompletion
+        #     
+        #     try:
+        #         github_response = GitHubCompletion.create(format_messages)
+        #         
+        #         if isinstance(github_response, dict) and "error" in github_response:
+        #             raise Exception(f"Error from GitHubCompletion: {github_response['error']}")
+        #         
+        #         try:
+        #             # First attempt: direct JSON parsing
+        #             blog_data = json.loads(github_response)
+        #         except json.JSONDecodeError:
+        #             # Second attempt: Try to extract JSON from text
+        #             import re
+        #             json_match = re.search(r'\{{[\s\S]*\}}', github_response)
+        #             if json_match:
+        #                 blog_data = json.loads(json_match.group(0))
+        #             else:
+        #                 raise
+        #         
+        #         # Ensure all required fields are present
+        #         required_fields = ['title', 'content', 'meta_description', 'slug', 'categories', 'keywords']
+        #         for field in required_fields:
+        #             if field not in blog_data:
+        #                 if field == 'slug':
+        #                     blog_data['slug'] = create_slug_from_title(blog_data.get('title', ''))
+        #                 elif field == 'meta_description':
+        #                     blog_data['meta_description'] = blog_data.get('content', '')[:160] + "..."
+        #                 elif field == 'categories':
+        #                     blog_data['categories'] = ['Finance']
+        #                 elif field == 'keywords':
+        #                     blog_data['keywords'] = ['finance', 'business']
+        #         
+        #         print("Successfully formatted blog content using GitHub API")
+        #         return blog_data
+        #         
+        #     except Exception as github_error:
+        #         print(f"Error using GitHub API for blog formatting: {github_error}")
+
                 
                 # Step 3: Fall back to Gemini
                 print("Falling back to Gemini for blog formatting...")
